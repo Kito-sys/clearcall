@@ -22,6 +22,9 @@ let wakeLock = null;
 let timerId = null;
 let callStart = 0;
 
+// Start loading the noise filter as soon as the page opens, so the tap on the button is not delayed.
+const krispReady = import("@livekit/krisp-noise-filter").catch(() => null);
+
 const T = isHost
   ? {
       lead: "לחיצה אחת פותחת שיחה. שולחים את הקישור, והצד השני רק לוחץ עליו.",
@@ -88,8 +91,15 @@ async function start() {
     return fail("אין חיבור לשרת. בדקו את האינטרנט ונסו שוב.");
   }
 
+  // Run exactly one noise suppressor: the browser's own one is turned off when Krisp can run.
+  let krispOk = false;
+  try {
+    const k = await Promise.race([krispReady, new Promise((r) => setTimeout(() => r(null), 1500))]);
+    krispOk = !!k && k.isKrispNoiseFilterSupported();
+  } catch { krispOk = false; }
+
   room = new Room({
-    audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audioCaptureDefaults: { echoCancellation: true, noiseSuppression: !krispOk, autoGainControl: true },
     adaptiveStream: false,
     dynacast: false,
   });
@@ -124,22 +134,31 @@ async function start() {
   keepAwake();
   render();
 
-  const mode = await enableVoiceFilter();
+  let mode = krispOk ? await enableVoiceFilter() : "basic";
+  if (krispOk && mode === "basic") {
+    // Krisp failed to start: bring the browser's own noise suppression back.
+    try {
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      await pub.track.restartTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    } catch { /* ignore */ }
+  }
   try { await room.localParticipant.setAttributes({ filter: mode }); } catch { /* ignore */ }
   render();
 }
 
-// Krisp filter with background-voice cancellation: runs on this device, on this microphone.
+// Krisp noise filter: runs on this device, on this microphone. The background-voice model is
+// requested, but Krisp only applies it on headsets it recognises, so the label never promises it.
 async function enableVoiceFilter() {
   try {
-    const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import("@livekit/krisp-noise-filter");
-    if (!isKrispNoiseFilterSupported()) return "basic";
+    const k = await krispReady;
+    if (!k || !k.isKrispNoiseFilterSupported()) return "basic";
+    const KrispNoiseFilter = k.KrispNoiseFilter;
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     if (!pub || !pub.track) return "basic";
     const processor = KrispNoiseFilter({ useBVC: true });
     await pub.track.setProcessor(processor);
     await processor.setEnabled(true);
-    return processor.isEnabled() ? "bvc" : "basic";
+    return processor.isEnabled() ? "krisp" : "basic";
   } catch (e) {
     console.warn("voice filter unavailable", e);
     return "basic";
@@ -175,14 +194,14 @@ function render() {
   const f = p.attributes && p.attributes.filter;
   const pill = $("filter");
   if (isHost) {
-    if (f === "bvc") {
-      pill.textContent = "ניקוי מלא פעיל, כולל קולות רקע";
+    if (f === "krisp") {
+      pill.textContent = "ניקוי רעשים פעיל";
       pill.className = "pill ok";
-      $("hint").textContent = "";
+      $("hint").textContent = "מנקה רעשים כמו רחוב, רוח ומכשירים. קולות של אנשים אחרים וטלוויזיה לא מנוקים בגרסה הזו.";
     } else if (f === "basic") {
       pill.textContent = "ניקוי בסיסי בלבד";
       pill.className = "pill mid";
-      $("hint").textContent = "המכשיר של הצד השני לא תומך בניקוי המלא. רעשים קבועים ינוקו, קולות של אנשים אחרים פחות.";
+      $("hint").textContent = "המכשיר של הצד השני לא תומך בניקוי המתקדם. רק רעשים קבועים ינוקו.";
     } else {
       pill.textContent = "מפעיל ניקוי רעש";
       pill.className = "pill mid";
