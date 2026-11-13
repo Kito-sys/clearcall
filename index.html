@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="שיחה נקייה">
+<meta name="theme-color" content="#10212b">
+<meta name="robots" content="noindex">
+<title>שיחה נקייה</title>
+<link rel="apple-touch-icon" href="./icon.png">
+<style>
+  :root { --bg:#10212b; --card:#1a3240; --ink:#f3f7f8; --soft:#a9c0c9; --go:#3ecf8e; --stop:#ef6461; --warn:#f2c14e; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+         display:flex; flex-direction:column; align-items:center; justify-content:center;
+         padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom)); text-align:center; }
+  main { width:100%; max-width:420px; display:flex; flex-direction:column; gap:18px; }
+  h1 { font-size:26px; margin:0; }
+  p { margin:0; color:var(--soft); font-size:17px; line-height:1.5; }
+  .card { background:var(--card); border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:10px; }
+  .status { font-size:20px; color:var(--ink); font-weight:600; }
+  .pill { display:inline-block; align-self:center; padding:6px 14px; border-radius:999px; font-size:15px; font-weight:600; }
+  .pill.ok { background:rgba(62,207,142,.18); color:var(--go); }
+  .pill.mid { background:rgba(242,193,78,.18); color:var(--warn); }
+  button { font:inherit; font-size:20px; font-weight:700; border:0; border-radius:16px; padding:18px; width:100%;
+           min-height:64px; color:#0c1a21; background:var(--go); cursor:pointer; }
+  button.second { background:#2a4756; color:var(--ink); }
+  button.stop { background:var(--stop); color:#fff; }
+  button:disabled { opacity:.5; }
+  .row { display:flex; gap:12px; }
+  .hidden { display:none !important; }
+  .small { font-size:14px; }
+  .timer { font-size:34px; font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">שיחה נקייה</h1>
+  <p id="lead"></p>
+
+  <div id="callCard" class="card hidden">
+    <div id="status" class="status"></div>
+    <div id="timer" class="timer hidden">00:00</div>
+    <span id="filter" class="pill hidden"></span>
+    <p id="hint" class="small"></p>
+  </div>
+
+  <button id="startBtn" class="hidden"></button>
+  <button id="shareBtn" class="second hidden">שליחת הקישור</button>
+  <div id="controls" class="row hidden">
+    <button id="muteBtn" class="second">השתקה</button>
+    <button id="endBtn" class="stop">סיום</button>
+  </div>
+  <p id="error" class="small" style="color:var(--stop)"></p>
+  <div id="audio"></div>
+</main>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
