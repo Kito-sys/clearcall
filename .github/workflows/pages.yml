@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-save livekit-client@2.23.0 @livekit/krisp-noise-filter@0.4.6 vite@8.3.8
+      - name: Icon
+        run: |
+          pip install pillow
+          mkdir -p public
+          python3 - <<'EOF'
+          from PIL import Image, ImageDraw
+          im = Image.new('RGB', (180, 180), '#10212b')
+          d = ImageDraw.Draw(im)
+          d.ellipse((40, 40, 140, 140), outline='#3ecf8e', width=10)
+          d.rounded_rectangle((78, 62, 102, 108), radius=12, fill='#3ecf8e')
+          d.line((90, 108, 90, 124), fill='#3ecf8e', width=8)
+          im.save('public/icon.png')
+          EOF
+      - name: Build
+        run: npx vite build --base=./
+        env:
+          VITE_TOKEN_URL: https://dzehmqiqczguulmnolzc.supabase.co/functions/v1/clearcall-token
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
