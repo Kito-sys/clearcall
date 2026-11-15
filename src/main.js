@@ -21,6 +21,7 @@ let muted = false;
 let wakeLock = null;
 let timerId = null;
 let callStart = 0;
+let preferClean = true; // host: listen to the server-cleaned voice when it is available
 
 // Start loading the noise filter as soon as the page opens, so the tap on the button is not delayed.
 const krispReady = import("@livekit/krisp-noise-filter").catch(() => null);
@@ -55,6 +56,7 @@ function init() {
   $("endBtn").onclick = () => end(true);
   $("muteBtn").onclick = toggleMute;
   $("shareBtn").onclick = share;
+  $("routeBtn").onclick = toggleRoute;
 }
 
 function fail(msg) {
@@ -105,6 +107,7 @@ async function start() {
   });
   room
     .on(RoomEvent.TrackSubscribed, onTrack)
+    .on(RoomEvent.TrackUnsubscribed, onTrackGone)
     .on(RoomEvent.ParticipantConnected, render)
     .on(RoomEvent.ParticipantDisconnected, onPeerLeft)
     .on(RoomEvent.ParticipantAttributesChanged, render)
@@ -165,17 +168,53 @@ async function enableVoiceFilter() {
   }
 }
 
-function onTrack(track) {
+// The relay is a server-side helper that republishes the guest's voice after cleaning it.
+function isRelay(p) {
+  return !!p && (p.isAgent === true || String(p.identity || "").indexOf("agent") === 0);
+}
+
+function onTrack(track, publication, participant) {
   if (track.kind !== Track.Kind.Audio) return;
+  const relay = isRelay(participant);
+  // The guest never plays the relay: it would be an echo of their own voice.
+  if (relay && !isHost) return;
   const el = track.attach();
   el.setAttribute("playsinline", "");
+  el.dataset.route = relay ? "clean" : "direct";
   $("audio").appendChild(el);
   room.startAudio().catch(() => {});
+  applyRoute();
+  render();
+}
+
+function onTrackGone(track) {
+  track.detach().forEach((el) => el.remove());
+  applyRoute();
+  render();
+}
+
+function hasClean() {
+  return !!$("audio").querySelector('[data-route="clean"]');
+}
+
+// Host hears exactly one copy of the guest: the cleaned one when available and chosen, else the direct one.
+function applyRoute() {
+  if (!isHost) return;
+  const useClean = preferClean && hasClean();
+  $("audio").querySelectorAll("audio").forEach((el) => {
+    el.muted = el.dataset.route === "clean" ? !useClean : useClean;
+  });
+}
+
+function toggleRoute() {
+  preferClean = !preferClean;
+  applyRoute();
+  render();
 }
 
 function peer() {
   if (!room) return null;
-  return [...room.remoteParticipants.values()][0] || null;
+  return [...room.remoteParticipants.values()].filter((p) => !isRelay(p))[0] || null;
 }
 
 function render() {
@@ -185,6 +224,7 @@ function render() {
     $("status").textContent = T.waiting;
     $("hint").textContent = T.waitingHint;
     show($("filter"), false);
+    show($("routeBtn"), false);
     stopTimer();
     return;
   }
@@ -193,7 +233,16 @@ function render() {
   // Each side cleans its own microphone, so the label shows what the OTHER side's device reported.
   const f = p.attributes && p.attributes.filter;
   const pill = $("filter");
-  if (isHost) {
+  show($("routeBtn"), isHost && hasClean());
+  if (isHost && hasClean()) {
+    $("routeBtn").textContent = preferClean ? "מעבר לקול רגיל" : "חזרה לקול נקי";
+  }
+  if (isHost && hasClean() && preferClean) {
+    pill.textContent = "בידוד דובר בשרת (ניסוי)";
+    pill.className = "pill ok";
+    $("hint").textContent = "הקול עובר ניקוי בשרת, שמסיר גם קולות של אנשים אחרים. ייתכן עיכוב קל.";
+    show(pill);
+  } else if (isHost) {
     if (f === "krisp") {
       pill.textContent = "ניקוי רעשים פעיל";
       pill.className = "pill ok";
@@ -252,6 +301,8 @@ async function end(byUser) {
   show($("callCard"), false);
   show($("controls"), false);
   show($("shareBtn"), false);
+  show($("routeBtn"), false);
+  preferClean = true;
   show($("lead"));
   $("lead").textContent = byUser ? "השיחה הסתיימה." : "השיחה נותקה.";
   $("startBtn").disabled = false;
