@@ -1,0 +1,50 @@
+name: Voice relay agent
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: What to do
+        type: choice
+        default: help
+        options: [help, create, deploy, status, logs]
+      region:
+        description: Region for create
+        default: eu-central
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LiveKit CLI
+        run: curl -sSL https://get.livekit.io/cli | bash
+      - name: Load LiveKit settings
+        if: inputs.operation != 'help'
+        env:
+          LIVEKIT_ENV: ${{ secrets.LIVEKIT_ENV }}
+        run: |
+          for name in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET; do
+            value=$(printf '%s\n' "$LIVEKIT_ENV" | tr -d '\r' | grep -E "^[[:space:]]*(export[[:space:]]+)?$name=" | head -n1 | sed -E "s/^[^=]*=//; s/^[\"']//; s/[\"'][[:space:]]*$//")
+            if [ -z "$value" ]; then echo "missing $name"; exit 1; fi
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+      - name: Run
+        working-directory: agent
+        run: |
+          case "${{ inputs.operation }}" in
+            help) lk --version; lk agent --help; lk agent create --help; lk agent deploy --help ;;
+            create) lk agent create --silent --region "${{ inputs.region }}" . ;;
+            deploy) lk agent deploy --silent . ;;
+            status) lk agent status ;;
+            logs) timeout 60 lk agent logs || true ;;
+          esac
+      - name: Save agent config
+        if: inputs.operation == 'create'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add agent/livekit.toml
+          git commit -m "Save agent config"
+          git push
